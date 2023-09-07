@@ -14,7 +14,8 @@ class TwoFactorAuthenticatableDouble
 
   define_model_callbacks :update
 
-  devise :two_factor_authenticatable
+  devise :two_factor_authenticatable,
+         otp_allowed_drift: 15
 
   attr_accessor :consumed_timestep
 

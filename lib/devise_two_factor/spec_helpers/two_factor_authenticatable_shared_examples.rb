@@ -74,7 +74,8 @@ RSpec.shared_examples 'two_factor_authenticatable' do
       end
 
       context 'given a valid OTP used multiple times within the allowed drift after a subsequent login' do
-        let(:consumed_otp) { ROTP::TOTP.new(otp_secret).at(Time.now - subject.class.otp_allowed_drift) }
+        let(:otp) { ROTP::TOTP.new(otp_secret) }
+        let(:consumed_otp) { otp.at(Time.now - subject.class.otp_allowed_drift) }
 
         before do
           travel_to(subject.class.otp_allowed_drift.seconds.ago)
@@ -83,7 +84,7 @@ RSpec.shared_examples 'two_factor_authenticatable' do
 
         context 'after the otp interval' do
           it 'fails to validate' do
-            travel_to(subject.class.otp_allowed_drift.seconds.from_now)
+            travel_to((subject.class.otp_allowed_drift + otp.interval).seconds.from_now)
             next_otp = ROTP::TOTP.new(otp_secret).at(Time.now)
             expect(subject.validate_and_consume_otp!(next_otp)).to be true
             expect(subject.validate_and_consume_otp!(consumed_otp)).to be false
@@ -113,13 +114,17 @@ RSpec.shared_examples 'two_factor_authenticatable' do
     end
 
     it 'does not validate an OTP above the allowed drift' do
-      otp = ROTP::TOTP.new(otp_secret).at(Time.now + subject.class.otp_allowed_drift * 2)
-      expect(subject.validate_and_consume_otp!(otp)).to be false
+      otp = ROTP::TOTP.new(otp_secret)
+      attempt = otp.at(Time.now + (otp.interval + subject.class.otp_allowed_drift * 2))
+
+      expect(subject.validate_and_consume_otp!(attempt)).to be false
     end
 
     it 'does not validate an OTP below the allowed drift' do
-      otp = ROTP::TOTP.new(otp_secret).at(Time.now - subject.class.otp_allowed_drift * 2)
-      expect(subject.validate_and_consume_otp!(otp)).to be false
+      otp = ROTP::TOTP.new(otp_secret)
+      attempt = otp.at(Time.now - (otp.interval + subject.class.otp_allowed_drift * 2))
+
+      expect(subject.validate_and_consume_otp!(attempt)).to be false
     end
   end
 
