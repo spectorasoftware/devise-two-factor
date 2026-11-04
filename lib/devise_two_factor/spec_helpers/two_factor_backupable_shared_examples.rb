@@ -17,7 +17,7 @@ RSpec.shared_examples 'two_factor_backupable' do
 
       it 'generates recovery codes of the correct length' do
         @plaintext_codes.each do |code|
-          expect(code.length).to eq(subject.class.otp_backup_code_length)
+          expect(code.length).to eq(subject.class.otp_backup_code_length*2)
         end
       end
 
@@ -34,7 +34,7 @@ RSpec.shared_examples 'two_factor_backupable' do
     end
 
     context 'with existing recovery codes' do
-      let(:old_codes)        { Faker::Lorem.words }
+      let(:old_codes)        { ['adam', 'betty', 'charles'] }
       let(:old_codes_hashed) { old_codes.map { |x| Devise::Encryptor.digest(subject.class, x) } }
 
       before do
@@ -49,38 +49,67 @@ RSpec.shared_examples 'two_factor_backupable' do
   end
 
   describe '#invalidate_otp_backup_code!' do
-    before do
-      @plaintext_codes = subject.generate_otp_backup_codes!
-    end
 
-    context 'given an invalid recovery code' do
-      it 'returns false' do
-        expect(subject.invalidate_otp_backup_code!('password')).to be false
-      end
-    end
 
-    context 'given a valid recovery code' do
-      it 'returns true' do
-        @plaintext_codes.each do |code|
-          expect(subject.invalidate_otp_backup_code!(code)).to be true
+  describe "#invalidate_otp_backup_code!" do
+      context "with no backup codes" do
+        it "does nothing" do
+          expect(subject.invalidate_otp_backup_code!("foo")).to be false
         end
       end
 
-      it 'invalidates that recovery code' do
-        code = @plaintext_codes.sample
+      context "with an array of backup codes, newly generated" do
+        before do
+          @plaintext_codes = subject.generate_otp_backup_codes!
+        end
 
-        subject.invalidate_otp_backup_code!(code)
-        expect(subject.invalidate_otp_backup_code!(code)).to be false
+        context 'given an invalid recovery code' do
+          it 'returns false' do
+            expect(subject.invalidate_otp_backup_code!('password')).to be false
+          end
+        end
+
+        context 'given a valid recovery code' do
+          it 'returns true' do
+            @plaintext_codes.each do |code|
+              expect(subject.invalidate_otp_backup_code!(code)).to be true
+            end
+          end
+
+          it 'invalidates that recovery code' do
+            code = @plaintext_codes.sample
+
+            subject.invalidate_otp_backup_code!(code)
+            expect(subject.invalidate_otp_backup_code!(code)).to be false
+          end
+
+          it 'does not invalidate the other recovery codes' do
+            code = @plaintext_codes.sample
+            subject.invalidate_otp_backup_code!(code)
+
+            @plaintext_codes.delete(code)
+
+            @plaintext_codes.each do |code|
+              expect(subject.invalidate_otp_backup_code!(code)).to be true
+            end
+          end
+        end
       end
 
-      it 'does not invalidate the other recovery codes' do
-        code = @plaintext_codes.sample
-        subject.invalidate_otp_backup_code!(code)
+      context "with backup codes as a string" do
+        before do
+          @plaintext_codes = subject.generate_otp_backup_codes!
 
-        @plaintext_codes.delete(code)
+          # Simulates database adapters that don't understand `t.string :otp_backup_codes, type: array` properly
+          # such as SQL Server; and have just returned the serialized string still.
+          # and the user not having done:
+          # `serialize :otp_backup_codes, Array` in their model
+          subject.otp_backup_codes = subject.otp_backup_codes.to_json
+        end
 
-        @plaintext_codes.each do |code|
-          expect(subject.invalidate_otp_backup_code!(code)).to be true
+        # Do not run when DB adapter handles array assignment correctly
+        it "raises a meaningful error", unless: -> { subject.otp_backup_codes.is_a?(Array) } do
+          expect { subject.invalidate_otp_backup_code!("flork") }.to raise_error(TypeError)
         end
       end
     end

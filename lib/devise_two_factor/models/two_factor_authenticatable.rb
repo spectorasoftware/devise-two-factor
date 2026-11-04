@@ -26,12 +26,11 @@ module Devise
 
         if self.consumed_timestep
           # reconstruct the timestamp of the last consumed timestep
-          after_timestamp = self.consumed_timestep * otp.interval
+          after_timestamp = self.consumed_timestep * totp.interval
         end
 
-        if totp.verify(code.gsub(/\s+/, ""), drift_behind: self.class.otp_allowed_drift, drift_ahead: self.class.otp_allowed_drift, after: after_timestamp)
-          return consume_otp!
-        end
+        timestamp = totp.verify(code.gsub(/\s+/, ""), drift_behind: self.class.otp_allowed_drift, drift_ahead: self.class.otp_allowed_drift, after: after_timestamp)
+        return consume_otp!(totp, timestamp) if timestamp
 
         false
       end
@@ -42,11 +41,6 @@ module Devise
 
       def current_otp
         otp.at(Time.now)
-      end
-
-      # ROTP's TOTP#timecode is private, so we duplicate it here
-      def current_otp_timestep
-         Time.now.utc.to_i / otp.interval
       end
 
       def otp_provisioning_uri(account, options = {})
@@ -63,10 +57,14 @@ module Devise
 
       # An OTP cannot be used more than once in a given timestep
       # Storing timestep of last valid OTP is sufficient to satisfy this requirement
-      def consume_otp!
-        if self.consumed_timestep != current_otp_timestep
-          self.consumed_timestep = current_otp_timestep
-          return save(validate: false)
+      def consume_otp!(otp, timestamp)
+        timestep = timestamp / otp.interval
+
+        if self.consumed_timestep != timestep
+          self.consumed_timestep = timestep
+          save!(validate: false)
+
+          return true
         end
 
         false
@@ -78,8 +76,9 @@ module Devise
                                     :otp_encrypted_attribute_options,
                                     :otp_secret_encryption_key)
 
+        # Generates an OTP secret of the specified length, returning it after Base32 encoding.
         def generate_otp_secret(otp_secret_length = self.otp_secret_length)
-          ROTP::Base32.random_base32(otp_secret_length)
+          ROTP::Base32.random(otp_secret_length)
         end
 
         # Return value will be splatted with ** so return a version of the

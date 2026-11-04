@@ -4,12 +4,18 @@ module Devise
 
       def authenticate!
         resource = mapping.to.find_for_database_authentication(authentication_hash)
+
+        hashed = false
         # We authenticate in two cases:
         # 1. The password and the OTP are correct
         # 2. The password is correct, and OTP is not required for login
         # We check the OTP, then defer to DatabaseAuthenticatable
-        if validate(resource) { validate_otp(resource) }
+        if validate(resource) { hashed = true; validate_otp(resource) }
           super
+        else
+          # Paranoid mode: do the expensive hash even when resource is nil,
+          # to avoid timing-based user enumeration.
+          mapping.to.new.password = password if !hashed && Devise.paranoid
         end
 
         fail(Devise.paranoid ? :invalid : :not_found_in_database) unless resource
@@ -21,7 +27,7 @@ module Devise
 
       def validate_otp(resource)
         return true unless resource.otp_required_for_login
-        return if params[scope]['otp_attempt'].nil?
+        return if params[scope].nil? || params[scope]['otp_attempt'].nil?
         resource.validate_and_consume_otp!(params[scope]['otp_attempt'])
       end
     end

@@ -1,3 +1,3 @@
 module DeviseTwoFactor
-  VERSION = '5.0.0.lockbox'.freeze
+  VERSION = '6.4.1.lockbox'.freeze
 end

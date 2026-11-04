@@ -19,13 +19,17 @@ class TwoFactorAuthenticatableDouble
 
   attr_accessor :consumed_timestep
 
-  def save(validate)
+  def save!(_)
     # noop for testing
     true
   end
 end
 
 describe ::Devise::Models::TwoFactorAuthenticatable do
+  it 'should be inserted prior to other devise modules' do
+    expect(Devise::ALL.first).to eq(:two_factor_authenticatable)
+  end
+
   context 'When included in a class' do
     subject { TwoFactorAuthenticatableDouble.new }
 
