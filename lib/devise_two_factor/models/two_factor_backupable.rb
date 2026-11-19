@@ -20,7 +20,7 @@ module Devise
         code_length     = self.class.otp_backup_code_length
 
         number_of_codes.times do
-          codes << SecureRandom.hex(code_length / 2) # Hexstring has length 2*n
+          codes << SecureRandom.hex(code_length)
         end
 
         hashed_codes = codes.map { |code| Devise::Encryptor.digest(self.class, code) }
@@ -30,15 +30,19 @@ module Devise
       end
 
       # Returns true and invalidates the given code
-      # iff that code is a valid backup code.
+      # if that code is a valid backup code.
       def invalidate_otp_backup_code!(code)
         codes = self.otp_backup_codes || []
+
+        # Should we still have some other kind of non iterable result, terminate.
+        raise TypeError.new("`otp_backup_codes` is expected to be an Array, got #{codes.class.name}. Hint: If your database does not support arrays, does your model correctly `serialize :otp_backup_codes, Array`?") unless codes.is_a?(Array)
 
         codes.each do |backup_code|
           next unless Devise::Encryptor.compare(self.class, backup_code, code)
 
           codes.delete(backup_code)
           self.otp_backup_codes = codes
+          save!(validate: false)
           return true
         end
 

@@ -1,8 +1,25 @@
-# Upgrading from 4.x to 5.x
+# Upgrading
 
-## Background
+## Upgrading from 5.x to 6.x
 
-### Database columns in version 4.x and older
+### save!
+
+`consume_otp!` and `invalidate_otp_backup_code!` now call `save!` instead of `save` (or nothing at all in the case of `invalidate_otp_backup_code!`). If you manually called `save`/`save!` after calling `invalidate_otp_backup_code!` you may be able to remove it.
+
+### Secret Lengths
+
+The `otp_secret_length` and `otp_backup_code_length` options have changed to be the number of random bytes that are generated.
+If you had configured these values you may want to change them if you wish to keep the same output length.
+
+`otp_secret_length` now has a default value of 20, generating a 160 bit secret key with an output length length of 32 bytes.
+
+`otp_backup_code_length` now has a default value of 16, generating a 32 byte backup code.
+
+## Upgrading from 4.x to 5.x
+
+### Background
+
+#### Database columns in version 4.x and older
 
 Versions 4.x and older stored the OTP secret in an attribute called `encrypted_otp_secret` using the [attr_encrypted](https://github.com/attr-encrypted/attr_encrypted) gem. This gem is currently unmaintained which is part of the motivation for moving to Rails encrypted attributes. This attribute was backed by three database columns:
 
@@ -21,7 +38,7 @@ otp_required_for_login
 
 A fresh install of 4.x would create all five of the database columns above.
 
-### Database columns in version 5.x and later
+#### Database columns in version 5.x and later
 
 Versions 5+ of this gem uses a single [Rails 7+ encrypted attribute](https://edgeguides.rubyonrails.org/active_record_encryption.html) named `otp_secret`to store the OTP secret in the database table (usually `users` but will be whatever model you picked).
 
@@ -33,18 +50,15 @@ consumed_timestep
 otp_required_for_login
 ```
 
-### Upgrading from 4.x to 5.x
-
-
 We have attempted to make the upgrade as painless as possible but unfortunately because of the secret storage change, it cannot be as simple as `bundle update devise-two-factor` :heart:
 
-#### Assumptions
+### Assumptions
 
 This guide assumes you are upgrading an existing Rails 6 app (with `devise` and `devise-two-factor`) to Rails 7.
 
 This gem must be upgraded **as part of a Rails 7 upgrade**. See [the official Rails upgrading guide](https://guides.rubyonrails.org/upgrading_ruby_on_rails.html) for an overview of upgrading Rails.
 
-#### Phase 1: Upgrading devise-two-factor as part of Rails 7 upgrade
+### Phase 1: Upgrading devise-two-factor as part of Rails 7 upgrade
 
 1. Update the version constraint for Rails in your `Gemfile` to your desired version e.g. `gem "rails", "~> 7.0.3"`
 1. Run `bundle install` and resolve any issues with dependencies.
@@ -59,7 +73,7 @@ This gem must be upgraded **as part of a Rails 7 upgrade**. See [the official Ra
     ```
 1. Add a `legacy_otp_secret` method to your user model e.g. `User`.
   * This method is used by the gem to find and decode the OTP secret from the legacy database columns.
-  * The implementation shown below works if you set up devise-two-factor with the settings suggested in the [README](./README.md).
+  * The implementation shown below works if you set up devise-two-factor with the settings suggested in the [OLD README](https://github.com/devise-two-factor/devise-two-factor/blob/8d74f5ee45594bf00e60d5d49eb6fcde82c2d2ba/README.md).
   * If you have customised the encryption scheme used to store the OTP secret then you will need to update this method to match.
   * If you are unsure, you should try the method below as is, and if you can still sign in users with OTP enabled then all is well.
     ```ruby
@@ -87,7 +101,7 @@ This gem must be upgraded **as part of a Rails 7 upgrade**. See [the official Ra
         cipher_text = raw_cipher_text[0..-17]
         auth_tag =  raw_cipher_text[-16..-1]
 
-        # this alrorithm lifted from
+        # this algorithm lifted from
         # https://github.com/attr-encrypted/encryptor/blob/master/lib/encryptor.rb#L54
 
         # create an OpenSSL object which will decrypt the AES cipher with 256 bit
@@ -101,7 +115,7 @@ This gem must be upgraded **as part of a Rails 7 upgrade**. See [the official Ra
         cipher.decrypt
 
         # Use a Password-Based Key Derivation Function to generate the key actually
-        # used for encryptoin from the key we got as input.
+        # used for encryption from the key we got as input.
         cipher.key = OpenSSL::PKCS5.pbkdf2_hmac_sha1(key, salt, hmac_iterations, cipher.key_len)
 
         # set the Initialization Vector (IV)
@@ -149,7 +163,7 @@ You can now deploy your upgraded application and devise-two-factor should work a
 
 This gem will fall back to **reading** the OTP secret from the legacy columns if it cannot find one in the new `otp_secret` column. When you **write** a new OTP secret it will always be written to the new `otp_secret` column.
 
-#### Phase 2: Clean up
+### Phase 2: Clean up
 
 This "clean up" phase can happen at the same time as your initial deployment but teams managing existing apps will likely want to do clean-up as separate, later deployments.
 
@@ -190,8 +204,17 @@ This "clean up" phase can happen at the same time as your initial deployment but
       end
     end
     ```
+1. Remove `otp_secret_encryption_key` from the model setup. This also assumes you successfully ran the rake task in step 1.
+    ```ruby
+    # from this:
+    devise :two_factor_authenticatable,
+        otp_secret_encryption_key: ENV['YOUR_ENCRYPTION_KEY_HERE']
 
-# Guide to upgrading from 2.x to 3.x
+    # to this:
+    devise :two_factor_authenticatable
+    ```
+
+## Upgrading from 2.x to 3.x
 
 Pull request #76 allows for compatibility with `attr_encrypted` 3.0, which should be used due to a security vulnerability discovered in 2.0.
 
@@ -211,7 +234,7 @@ class User < ActiveRecord::Base
          :otp_secret_encryption_key => ENV['DEVISE_TWO_FACTOR_ENCRYPTION_KEY']
 ```
 
-# Guide to upgrading from 1.x to 2.x
+## Upgrading from 1.x to 2.x
 
 Pull request #43 added a new field to protect against "shoulder-surfing" attacks. If upgrading, you'll need to add the `:consumed_timestep` column to your `Users` model.
 
